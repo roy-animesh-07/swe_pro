@@ -1,0 +1,19 @@
+# Render Blueprint: deploys the Docker image as one web service.
+# Provide MONGO_URL (e.g. a MongoDB Atlas connection string) in the Render dashboard.
+services:
+  - type: web
+    name: jis
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/health
+    envVars:
+      - key: MONGO_URL
+        sync: false
+      - key: ADMIN_USERNAME
+        value: registrar
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: VIEW_CHARGE
+        value: "100"
+      - key: COURT_TIMEZONE
+        value: Asia/Kolkata

@@ -1,0 +1,616 @@
+openapi: 3.1.0
+info:
+  title: Judiciary Information System (JIS) API
+  version: 1.0.0
+  description: Minimal API contract derived from the JIS problem statement. The implementation uses JavaScript only (React frontend and Node.js/Express backend); TypeScript is not required.
+servers:
+  - url: /api
+
+tags:
+  - name: Auth
+  - name: Users
+  - name: Cases
+  - name: Hearings
+  - name: Queries
+  - name: Past Cases
+
+paths:
+  /health:
+    get:
+      summary: Liveness check (used by Docker/Render health checks)
+      responses:
+        '200': {description: OK}
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LoginRequest'}
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LoginResponse'}
+        '401': {description: Invalid credentials}
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout
+      security: [{sessionAuth: []}]
+      responses:
+        '200': {description: Logout successful}
+        '401': {description: Not authenticated}
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current logged-in user
+      security: [{sessionAuth: []}]
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/User'}
+        '401': {description: Not authenticated}
+
+  /users:
+    get:
+      tags: [Users]
+      summary: List user accounts (implementation extension used by the Users page)
+      security: [{sessionAuth: []}]
+      x-role: REGISTRAR
+      responses:
+        '200':
+          description: All accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/User'}
+        '403': {description: Registrar role required}
+    post:
+      tags: [Users]
+      summary: Create user account
+      security: [{sessionAuth: []}]
+      x-role: REGISTRAR
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateUserRequest'}
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/User'}
+        '400': {description: Invalid input}
+        '403': {description: Registrar role required}
+        '409': {description: Username already exists}
+
+  /users/{username}:
+    delete:
+      tags: [Users]
+      summary: Delete user account
+      security: [{sessionAuth: []}]
+      x-role: REGISTRAR
+      parameters:
+        - $ref: '#/components/parameters/Username'
+      responses:
+        '204': {description: User deleted}
+        '403': {description: Registrar role required}
+        '404': {description: User not found}
+        '409': {description: Cannot delete the account you are logged in with}
+
+  /cases:
+    post:
+      tags: [Cases]
+      summary: Register case and generate CIN
+      security: [{sessionAuth: []}]
+      x-role: REGISTRAR
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateCaseRequest'}
+      responses:
+        '201':
+          description: Case registered
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Case'}
+        '400': {description: Invalid input}
+        '403': {description: Registrar role required}
+
+  /cases/{cin}:
+    get:
+      tags: [Cases]
+      summary: Get case details and hearing history for case management
+      security: [{sessionAuth: []}]
+      x-role: REGISTRAR
+      parameters:
+        - $ref: '#/components/parameters/CIN'
+      responses:
+        '200':
+          description: Case and hearings
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CaseWithHearings'}
+        '401': {description: Not authenticated}
+        '403': {description: Registrar role required}
+        '404': {description: Case not found}
+
+  /hearings/availability:
+    get:
+      tags: [Hearings]
+      summary: Get vacant hearing slots for a working day
+      security: [{sessionAuth: []}]
+      x-role: REGISTRAR
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema: {type: string, format: date}
+      responses:
+        '200':
+          description: Vacant slots
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AvailabilityResponse'}
+        '400': {description: Invalid/non-working date}
+        '403': {description: Registrar role required}
+
+  /cases/{cin}/hearings:
+    post:
+      tags: [Hearings]
+      summary: Assign hearing date/time
+      security: [{sessionAuth: []}]
+      x-role: REGISTRAR
+      parameters:
+        - $ref: '#/components/parameters/CIN'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ScheduleHearingRequest'}
+      responses:
+        '201':
+          description: Hearing scheduled
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Hearing'}
+        '400': {description: Invalid/non-working date or slot}
+        '403': {description: Registrar role required}
+        '404': {description: Case not found}
+        '409': {description: Slot already booked or invalid case state}
+
+  /cases/{cin}/hearings/{hearingId}/adjourn:
+    post:
+      tags: [Hearings]
+      summary: Adjourn hearing and assign new hearing
+      security: [{sessionAuth: []}]
+      x-role: REGISTRAR
+      parameters:
+        - $ref: '#/components/parameters/CIN'
+        - $ref: '#/components/parameters/HearingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AdjournHearingRequest'}
+      responses:
+        '200': {description: Hearing adjourned and new hearing assigned}
+        '400': {description: Invalid input}
+        '403': {description: Registrar role required}
+        '404': {description: Case or hearing not found}
+        '409': {description: New slot unavailable or invalid state}
+
+  /cases/{cin}/hearings/{hearingId}/complete:
+    post:
+      tags: [Hearings]
+      summary: Record proceedings for a hearing
+      security: [{sessionAuth: []}]
+      x-role: REGISTRAR
+      parameters:
+        - $ref: '#/components/parameters/CIN'
+        - $ref: '#/components/parameters/HearingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CompleteHearingRequest'}
+      responses:
+        '200': {description: Proceedings recorded}
+        '400': {description: Invalid input}
+        '403': {description: Registrar role required}
+        '404': {description: Case or hearing not found}
+        '409': {description: Invalid case/hearing state}
+
+  /cases/{cin}/close:
+    post:
+      tags: [Cases]
+      summary: Record judgment and close case
+      security: [{sessionAuth: []}]
+      x-role: REGISTRAR
+      parameters:
+        - $ref: '#/components/parameters/CIN'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CloseCaseRequest'}
+      responses:
+        '200':
+          description: Case closed
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Case'}
+        '400': {description: Judgment data missing/invalid}
+        '403': {description: Registrar role required}
+        '404': {description: Case not found}
+        '409': {description: Case already closed or invalid state}
+
+  /queries/pending-cases:
+    get:
+      tags: [Queries]
+      summary: List currently pending cases sorted by CIN
+      security: [{sessionAuth: []}]
+      x-role: REGISTRAR
+      responses:
+        '200':
+          description: Pending cases
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/PendingCase'}
+        '403': {description: Registrar role required}
+
+  /queries/resolved-cases:
+    get:
+      tags: [Queries]
+      summary: List cases resolved during a period
+      security: [{sessionAuth: []}]
+      x-role: REGISTRAR
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: {type: string, format: date}
+        - name: to
+          in: query
+          required: true
+          schema: {type: string, format: date}
+      responses:
+        '200':
+          description: Resolved cases, chronological by start date
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ResolvedCase'}
+        '400': {description: Invalid period}
+        '403': {description: Registrar role required}
+
+  /queries/hearings:
+    get:
+      tags: [Queries]
+      summary: List hearings on a particular date
+      security: [{sessionAuth: []}]
+      x-role: REGISTRAR
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema: {type: string, format: date}
+      responses:
+        '200':
+          description: Hearings on the selected date
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/DailyHearing'}
+        '400': {description: Invalid date}
+        '403': {description: Registrar role required}
+
+  /queries/status/{cin}:
+    get:
+      tags: [Queries]
+      summary: Get case status by CIN
+      security: [{sessionAuth: []}]
+      x-role: REGISTRAR
+      parameters:
+        - $ref: '#/components/parameters/CIN'
+      responses:
+        '200':
+          description: Case status
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CaseStatus'}
+        '403': {description: Registrar role required}
+        '404': {description: Case not found}
+
+  /past-cases/search:
+    get:
+      tags: [Past Cases]
+      summary: Search old cases by keyword
+      security: [{sessionAuth: []}]
+      x-role: JUDGE,LAWYER
+      parameters:
+        - name: keyword
+          in: query
+          required: true
+          schema: {type: string, minLength: 1}
+      responses:
+        '200':
+          description: Matching old cases
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/PastCaseSearchResult'}
+        '401': {description: Not authenticated}
+        '403': {description: Judge or Lawyer role required}
+
+  /past-cases/{cin}/view:
+    post:
+      tags: [Past Cases]
+      summary: View full old-case details
+      security: [{sessionAuth: []}]
+      x-role: JUDGE,LAWYER
+      parameters:
+        - $ref: '#/components/parameters/CIN'
+      responses:
+        '200':
+          description: Old case details; lawyer view is charged and recorded
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/HistoricalViewResponse'}
+        '401': {description: Not authenticated}
+        '403': {description: Judge or Lawyer role required}
+        '404': {description: Case not found}
+        '409': {description: Case is not an old/closed case}
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: token
+      description: Authentication is an implementation choice; protected endpoints require an authenticated user.
+
+  parameters:
+    CIN:
+      name: cin
+      in: path
+      required: true
+      schema: {type: string}
+    Username:
+      name: username
+      in: path
+      required: true
+      schema: {type: string}
+    HearingId:
+      name: hearingId
+      in: path
+      required: true
+      schema: {type: string}
+
+  schemas:
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: {type: string}
+        password: {type: string}
+
+    LoginResponse:
+      type: object
+      required: [user, token]
+      properties:
+        user: {$ref: '#/components/schemas/User'}
+        token:
+          type: string
+          description: "Opaque bearer token. Send it as the Authorization header: Bearer <token>."
+
+    User:
+      type: object
+      required: [username, name, role]
+      properties:
+        username: {type: string}
+        name: {type: string}
+        role:
+          type: string
+          enum: [REGISTRAR, JUDGE, LAWYER]
+
+    CreateUserRequest:
+      type: object
+      required: [username, password, name, role]
+      properties:
+        username: {type: string}
+        password: {type: string}
+        name: {type: string}
+        role:
+          type: string
+          enum: [REGISTRAR, JUDGE, LAWYER]
+
+    CreateCaseRequest:
+      type: object
+      required:
+        - defendantName
+        - defendantAddress
+        - crimeType
+        - committedDate
+        - committedLocation
+        - arrestingOfficer
+        - arrestDate
+        - judgeName
+        - publicProsecutor
+        - lawyerName
+        - startDate
+        - expectedCompletionDate
+      properties:
+        defendantName: {type: string}
+        defendantAddress: {type: string}
+        crimeType: {type: string}
+        committedDate: {type: string, format: date}
+        committedLocation: {type: string}
+        arrestingOfficer: {type: string}
+        arrestDate: {type: string, format: date}
+        judgeName: {type: string}
+        publicProsecutor: {type: string}
+        lawyerName: {type: string}
+        startDate: {type: string, format: date}
+        expectedCompletionDate: {type: string, format: date}
+
+    Case:
+      type: object
+      properties:
+        cin: {type: string}
+        defendantName: {type: string}
+        defendantAddress: {type: string}
+        crimeType: {type: string}
+        committedDate: {type: string, format: date}
+        committedLocation: {type: string}
+        arrestingOfficer: {type: string}
+        arrestDate: {type: string, format: date}
+        judgeName: {type: string}
+        publicProsecutor: {type: string}
+        lawyerName: {type: string}
+        startDate: {type: string, format: date}
+        expectedCompletionDate: {type: string, format: date}
+        status:
+          type: string
+          enum: [REGISTERED, HEARING_SCHEDULED, PENDING, CLOSED]
+        judgmentDate: {type: string, format: date, nullable: true}
+        judgmentSummary: {type: string, nullable: true}
+
+    CaseWithHearings:
+      allOf:
+        - $ref: '#/components/schemas/Case'
+        - type: object
+          properties:
+            hearings:
+              type: array
+              items: {$ref: '#/components/schemas/Hearing'}
+
+    Hearing:
+      type: object
+      properties:
+        hearingId: {type: string}
+        cin: {type: string}
+        hearingDate: {type: string, format: date}
+        timeSlot: {type: string}
+        proceedingsSummary: {type: string, nullable: true}
+        adjournmentReason: {type: string, nullable: true}
+        status:
+          type: string
+          enum: [SCHEDULED, ADJOURNED, COMPLETED]
+
+    AvailabilityResponse:
+      type: object
+      required: [date, availableSlots]
+      properties:
+        date: {type: string, format: date}
+        availableSlots:
+          type: array
+          items: {type: string}
+
+    ScheduleHearingRequest:
+      type: object
+      required: [hearingDate, timeSlot]
+      properties:
+        hearingDate: {type: string, format: date}
+        timeSlot: {type: string}
+
+    AdjournHearingRequest:
+      type: object
+      required: [reason, newHearingDate, newTimeSlot]
+      properties:
+        reason: {type: string}
+        newHearingDate: {type: string, format: date}
+        newTimeSlot: {type: string}
+
+    CompleteHearingRequest:
+      type: object
+      required: [proceedingsSummary]
+      properties:
+        proceedingsSummary: {type: string}
+        nextHearingDate: {type: string, format: date, nullable: true}
+        nextTimeSlot: {type: string, nullable: true}
+
+    CloseCaseRequest:
+      type: object
+      required: [judgmentDate, judgmentSummary]
+      properties:
+        judgmentDate: {type: string, format: date}
+        judgmentSummary: {type: string}
+
+    PendingCase:
+      type: object
+      properties:
+        startDate: {type: string, format: date}
+        cin: {type: string}
+        defendantName: {type: string}
+        defendantAddress: {type: string}
+        crimeType: {type: string}
+        committedDate: {type: string, format: date}
+        committedLocation: {type: string}
+        lawyerName: {type: string}
+        publicProsecutor: {type: string}
+        judgeName: {type: string}
+
+    ResolvedCase:
+      type: object
+      properties:
+        startDate: {type: string, format: date}
+        cin: {type: string}
+        judgmentDate: {type: string, format: date}
+        judgeName: {type: string}
+        judgmentSummary: {type: string}
+
+    DailyHearing:
+      type: object
+      properties:
+        cin: {type: string}
+        hearingId: {type: string}
+        hearingDate: {type: string, format: date}
+        timeSlot: {type: string}
+
+    CaseStatus:
+      type: object
+      properties:
+        cin: {type: string}
+        status:
+          type: string
+          enum: [REGISTERED, HEARING_SCHEDULED, PENDING, CLOSED]
+
+    PastCaseSearchResult:
+      type: object
+      properties:
+        cin: {type: string}
+        defendantName: {type: string}
+        crimeType: {type: string}
+        startDate: {type: string, format: date}
+        judgmentDate: {type: string, format: date}
+        judgeName: {type: string}
+
+    HistoricalViewResponse:
+      type: object
+      properties:
+        case: {$ref: '#/components/schemas/CaseWithHearings'}
+        charge:
+          type: number
+          nullable: true
+          description: Charge for a lawyer view; null for a judge view.
+        viewCount:
+          type: integer
+          description: Lawyer views only - total old-case views recorded for this lawyer.
