@@ -8,6 +8,7 @@ const viewRecordSchema = new mongoose.Schema(
     cin: { type: String, required: true },
     viewedAt: { type: Date, required: true, default: Date.now },
     charge: { type: Number, required: true },
+    isCleared: { type: Boolean, default: false },
   },
   { collection: 'view_records' }
 );

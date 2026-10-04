@@ -81,4 +81,18 @@ async function view(req, res) {
   res.json(body);
 }
 
-module.exports = { search, view };
+async function getOutstandingCharge(req, res) {
+  const records = await ViewRecord.find({ lawyerUsername: req.user.username, isCleared: false }).lean();
+  const total = records.reduce((sum, r) => sum + r.charge, 0);
+  res.json({ total });
+}
+
+async function clearCharges(req, res) {
+  await ViewRecord.updateMany(
+    { lawyerUsername: req.user.username, isCleared: false },
+    { $set: { isCleared: true } }
+  );
+  res.json({ message: 'Charges cleared' });
+}
+
+module.exports = { search, view, getOutstandingCharge, clearCharges };

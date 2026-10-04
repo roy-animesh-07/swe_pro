@@ -118,7 +118,9 @@ export function PastCaseViewPage() {
     setBusy(true);
     setError(null);
     try {
-      setResult(await api.viewPastCase(cin));
+      const res = await api.viewPastCase(cin);
+      setResult(res);
+      if (res.charge) window.dispatchEvent(new Event('charge-added'));
     } catch (err) {
       setError(err);
     } finally {

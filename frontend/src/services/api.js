@@ -105,4 +105,6 @@ export const api = {
   // Past cases
   searchPastCases: (keyword) => request('GET', `/past-cases/search?${q({ keyword })}`),
   viewPastCase: (cin) => request('POST', `/past-cases/${enc(cin)}/view`),
+  getOutstandingCharge: () => request('GET', '/past-cases/charges'),
+  payOutstandingCharge: () => request('POST', '/past-cases/pay'),
 };

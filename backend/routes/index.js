@@ -42,5 +42,7 @@ router.get('/queries/status/:cin', registrar, queries.caseStatus);
 // Old cases (Judge / Lawyer)
 router.get('/past-cases/search', judgeOrLawyer, pastCases.search);
 router.post('/past-cases/:cin/view', judgeOrLawyer, pastCases.view);
+router.get('/past-cases/charges', judgeOrLawyer, pastCases.getOutstandingCharge);
+router.post('/past-cases/pay', judgeOrLawyer, pastCases.clearCharges);
 
 module.exports = router;
